@@ -89,3 +89,56 @@ pwk_mean = mean(pwk,'omitnan');
 
 disp('推定膝位置')
 disp(pwk_mean)
+
+%% 膝位置推移の描画
+
+t_plot = t(2:end);   % pwkはN-1個なので時間も合わせる
+
+figure;
+
+subplot(3,1,1)
+plot(t_plot,pwk(:,1))
+hold on
+yline(pwk_mean(1),'--')
+xlabel('Time [s]')
+ylabel('X [mm]')
+title('Estimated Knee Position X')
+grid on
+
+subplot(3,1,2)
+plot(t_plot,pwk(:,2))
+hold on
+yline(pwk_mean(2),'--')
+xlabel('Time [s]')
+ylabel('Y [mm]')
+title('Estimated Knee Position Y')
+grid on
+
+subplot(3,1,3)
+plot(t_plot,pwk(:,3))
+hold on
+yline(pwk_mean(3),'--')
+xlabel('Time [s]')
+ylabel('Z [mm]')
+title('Estimated Knee Position Z')
+grid on
+
+%% 3次元表示
+
+figure
+
+plot3(pwk(:,1),pwk(:,2),pwk(:,3))
+hold on
+
+plot3(pwk_mean(1),...
+      pwk_mean(2),...
+      pwk_mean(3),...
+      'o','MarkerSize',10)
+
+xlabel('X [mm]')
+ylabel('Y [mm]')
+zlabel('Z [mm]')
+
+title('Estimated Knee Center Trajectory')
+grid on
+axis equal
