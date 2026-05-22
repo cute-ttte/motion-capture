@@ -10,7 +10,7 @@ addpath('富大山内研');
 %% Excel読み込み
 T = readtable('1link_KIT_08.xlsx');
 
-%% 脛剛体マーカ重心位置
+%% 脛部重心位置
 x = T{9:end,26};
 y = T{9:end,27};
 z = T{9:end,28};
@@ -40,11 +40,13 @@ for k = 1:N
     quat = quaternion(q(k,:));
 
     % 回転行列
-    R(:,:,k) = rotmat(quat,'frame');
+    R(:,:,k) = rotmat(quat,'point');
 
 end
 
-%% 膝関節位置（回転軸）の推定
+%% 膝関節位置（回転中心）推定
+
+% 初期姿勢
 pwf_0 = p(1,:)';
 Rwf_0 = R(:,:,1);
 
@@ -53,129 +55,87 @@ B = [];
 
 I = eye(3);
 
-for k = 1:N
+for k = 2:N
 
-    % 現在時刻
+    %% 現在時刻
     pwf_t = p(k,:)';
     Rwf_t = R(:,:,k);
 
     %% 相対回転行列
     R_theta = Rwf_t * Rwf_0';
 
-    %% 回転角計算
-    val = (trace(R_theta)-1)/2;
+    %% 回転角算出
+    theta = acos( ...
+        max(min((trace(R_theta)-1)/2,1),-1));
 
-    % 数値誤差対策
-    val = max(min(val,1),-1);
-
-    theta = acos(val);
-
-    %% 小さい回転を除外
+    %% 小さい回転を除去
     if theta < deg2rad(5)
-        continue;
+        continue
     end
 
     %% 最小二乗行列作成
-    A = [A;
-         R_theta-I];
+    A_k = I - R_theta;
 
-    B = [B;
-         R_theta*pwf_0-pwf_t];
+    B_k = pwf_t - R_theta*pwf_0;
 
-end
-
-%% 最小二乗解
-pwk = A\B;
-
-%% 結果表示
-disp('====================================');
-
-fprintf('推定された膝関節(回転軸)の位置 [m]\n');
-
-fprintf('x = %.5f\n',pwk(1));
-fprintf('y = %.5f\n',pwk(2));
-fprintf('z = %.5f\n',pwk(3));
-
-disp('====================================');
-
-%% 時系列表示
-figure('Name','Position Time Series','Color','w');
-
-axis_labels = {'X Position [m]','Y Position [m]','Z Position [m]'};
-
-for i=1:3
-
-    subplot(3,1,i)
-
-    plot(t,p(:,i),'b','LineWidth',1.5)
-    hold on
-
-    plot([t(1),t(end)],...
-         [pwk(i),pwk(i)],...
-         'r--','LineWidth',2)
-
-    grid on
-
-    xlabel('Time [s]')
-    ylabel(axis_labels{i})
-
-    legend('Foot Marker',...
-           'Estimated Knee',...
-           'Location','best')
+    A = [A;A_k];
+    B = [B;B_k];
 
 end
 
-%% ======3次元表示======
+%% ランク確認
+fprintf('rank(A)=%d\n',rank(A));
 
-figure('Name',...
-       'Estimated Knee Position',...
-       'Color','w')
+%% 最小ノルム最小二乗解
+pwk = lsqminnorm(A,B);
 
-% 脛部マーカ点群
-plot3(p(:,1),...
-      p(:,2),...
-      p(:,3),...
-      'b.',...
-      'MarkerSize',10)
+fprintf('\n推定膝関節位置\n')
+fprintf('X = %.3f mm\n',pwk(1))
+fprintf('Y = %.3f mm\n',pwk(2))
+fprintf('Z = %.3f mm\n',pwk(3))
 
+%% ==========================
+%% 可視化
+%% ==========================
+
+figure
 hold on
-
-% 推定膝位置
-plot3(pwk(1),...
-      pwk(2),...
-      pwk(3),...
-      'r.',...
-      'MarkerSize',40)
-
 grid on
 axis equal
-
-xlabel('X [m]')
-ylabel('Y [m]')
-zlabel('Z [m]')
-
-title('Estimated Knee Position and Foot Marker Trajectory')
-
-legend('Foot Marker',...
-       'Estimated Knee')
-
 view(3)
 
+%% 脛部重心軌跡
+plot3( ...
+    p(:,1),...
+    p(:,2),...
+    p(:,3),...
+    'LineWidth',2)
+
+%% 推定膝位置
+scatter3( ...
+    pwk(1),...
+    pwk(2),...
+    pwk(3),...
+    200,...
+    'filled')
+
+%% 初期位置
+scatter3( ...
+    p(1,1),...
+    p(1,2),...
+    p(1,3),...
+    100,...
+    'filled')
+
+xlabel('X [mm]')
+ylabel('Y [mm]')
+zlabel('Z [mm]')
+
+title('Knee joint center estimation')
+
+legend( ...
+    'Shank trajectory',...
+    'Estimated knee',...
+    'Initial position')
+
 rotate3d on
-
-%% ======膝からの距離確認======
-
-r = vecnorm((p-pwk'),2,2);
-
-figure('Name',...
-       'Distance from Knee',...
-       'Color','w')
-
-plot(t,r,'LineWidth',1.5)
-
-grid on
-
-xlabel('Time [s]')
-ylabel('Distance [m]')
-
-title('Distance from Estimated Knee')
