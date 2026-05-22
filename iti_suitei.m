@@ -44,61 +44,138 @@ for k = 1:N
 
 end
 
-%% 膝関節位置（回転軸）の推定 (最小二乗法)
-% 初期状態(t=0)の位置と姿勢
-pwf_0 = p(1, :)'; % 3x1ベクトル
-Rwf_0 = R(:, :, 1);
+%% 膝関節位置（回転軸）の推定
+pwf_0 = p(1,:)';
+Rwf_0 = R(:,:,1);
 
-% 最小二乗法のための行列AとベクトルBの初期化
-% A * pwk = B
-A = zeros(3 * N, 3);
-B = zeros(3 * N, 1);
+A = [];
+B = [];
+
 I = eye(3);
 
 for k = 1:N
-    % 時刻tにおける脛部マーカの位置と姿勢
-    pwf_t = p(k, :)';
-    Rwf_t = R(:, :, k);
-    
-    % 相対回転行列 R(θ) の計算 (式 5.3)
-    R_theta = Rwf_0' * Rwf_t;
-    
-    % 方程式の構築: (R(θ) - I) * pwk = R(θ)*pwf(0) - pwf(t)
-    A(3*k-2 : 3*k, :) = R_theta - I;
-    B(3*k-2 : 3*k, 1) = R_theta * pwf_0 - pwf_t;
+
+    % 現在時刻
+    pwf_t = p(k,:)';
+    Rwf_t = R(:,:,k);
+
+    %% 相対回転行列
+    R_theta = Rwf_t * Rwf_0';
+
+    %% 回転角計算
+    val = (trace(R_theta)-1)/2;
+
+    % 数値誤差対策
+    val = max(min(val,1),-1);
+
+    theta = acos(val);
+
+    %% 小さい回転を除外
+    if theta < deg2rad(5)
+        continue;
+    end
+
+    %% 最小二乗行列作成
+    A = [A;
+         R_theta-I];
+
+    B = [B;
+         R_theta*pwf_0-pwf_t];
+
 end
 
-% 最小二乗法 (バックスラッシュ演算子) で膝関節位置 pwk を一括算出
-pwk = A \ B;
+%% 最小二乗解
+pwk = A\B;
 
-%% 結果の計算と表示
-disp('=============================================');
-fprintf('推定された膝関節(回転軸)の位置 [m]:\n');
-fprintf('  x = %.5f\n', pwk(1));
-fprintf('  y = %.5f\n', pwk(2));
-fprintf('  z = %.5f\n', pwk(3));
-disp('=============================================');
+%% 結果表示
+disp('====================================');
 
-%% 座標ごとの時間変化をグラフ表示
-figure('Name', 'Position Time Series (Foot vs Knee)', 'Color', 'w');
+fprintf('推定された膝関節(回転軸)の位置 [m]\n');
 
-% グラフのラベルとタイトルの設定
-axis_labels = {'X Position [m]', 'Y Position [m]', 'Z Position [m]'};
-axis_titles = {'X-axis Time Series', 'Y-axis Time Series', 'Z-axis Time Series'};
+fprintf('x = %.5f\n',pwk(1));
+fprintf('y = %.5f\n',pwk(2));
+fprintf('z = %.5f\n',pwk(3));
 
-for i = 1:3
-    subplot(3, 1, i);
-    
-    % 脛部マーカの各座標の軌跡 (青の実線)
-    plot(t, p(:, i), 'b-', 'LineWidth', 1.5); hold on;
-    
-    % 推定された膝関節位置 (赤の破線、全時刻で一定値)
-    plot([t(1), t(end)], [pwk(i), pwk(i)], 'r--', 'LineWidth', 1.5);
-    
-    % グラフの装飾
-    grid on;
-    xlabel('Time [s]');
-    ylabel(axis_labels{i});
-    title(axis_titles{i});
-    legend('Foot Marker (p_{wf})', 'Estimated Knee (p_{wk})', 'Location', 'best');
+disp('====================================');
+
+%% 時系列表示
+figure('Name','Position Time Series','Color','w');
+
+axis_labels = {'X Position [m]','Y Position [m]','Z Position [m]'};
+
+for i=1:3
+
+    subplot(3,1,i)
+
+    plot(t,p(:,i),'b','LineWidth',1.5)
+    hold on
+
+    plot([t(1),t(end)],...
+         [pwk(i),pwk(i)],...
+         'r--','LineWidth',2)
+
+    grid on
+
+    xlabel('Time [s]')
+    ylabel(axis_labels{i})
+
+    legend('Foot Marker',...
+           'Estimated Knee',...
+           'Location','best')
+
 end
+
+%% ======3次元表示======
+
+figure('Name',...
+       'Estimated Knee Position',...
+       'Color','w')
+
+% 脛部マーカ点群
+plot3(p(:,1),...
+      p(:,2),...
+      p(:,3),...
+      'b.',...
+      'MarkerSize',10)
+
+hold on
+
+% 推定膝位置
+plot3(pwk(1),...
+      pwk(2),...
+      pwk(3),...
+      'r.',...
+      'MarkerSize',40)
+
+grid on
+axis equal
+
+xlabel('X [m]')
+ylabel('Y [m]')
+zlabel('Z [m]')
+
+title('Estimated Knee Position and Foot Marker Trajectory')
+
+legend('Foot Marker',...
+       'Estimated Knee')
+
+view(3)
+
+rotate3d on
+
+%% ======膝からの距離確認======
+
+r = vecnorm((p-pwk'),2,2);
+
+figure('Name',...
+       'Distance from Knee',...
+       'Color','w')
+
+plot(t,r,'LineWidth',1.5)
+
+grid on
+
+xlabel('Time [s]')
+ylabel('Distance [m]')
+
+title('Distance from Estimated Knee')
